@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flood Detection System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f8f9fa;
+            padding-top: 2rem;
+        }
+        .main-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        .upload-container {
+            border: 2px dashed #dee2e6;
+            border-radius: 5px;
+            padding: 2rem;
+            text-align: center;
+            margin-bottom: 2rem;
+            transition: all 0.3s;
+        }
+        .upload-container:hover {
+            border-color: #0d6efd;
+        }
+        .upload-container.dragover {
+            background-color: #e9ecef;
+            border-color: #0d6efd;
+        }
+        .preview-container {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 1rem;
+        }
+        .preview-image {
+            max-width: 100%;
+            max-height: 300px;
+            border-radius: 5px;
+        }
+        .result-container {
+            margin-top: 2rem;
+            padding: 1rem;
+            border-radius: 5px;
+            text-align: center;
+        }
+        .result-flooded {
+            background-color: #f8d7da;
+            border: 1px solid #f5c2c7;
+        }
+        .result-nonflooded {
+            background-color: #d1e7dd;
+            border: 1px solid #badbcc;
+        }
+        .confidence-bar {
+            height: 24px;
+            border-radius: 12px;
+            margin: 1rem 0;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 1rem 0;
+        }
+        .spinner-border {
+            width: 3rem;
+            height: 3rem;
+        }
+        .tab-content {
+            padding: 1rem 0;
+        }
+        .camera-container {
+            position: relative;
+            width: 100%;
+            border-radius: 5px;
+            overflow: hidden;
+            margin-bottom: 1rem;
+        }
+        #camera-stream {
+            width: 100%;
+            max-height: 400px;
+            border-radius: 5px;
+        }
+        .camera-controls {
+            margin-top: 1rem;
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+        }
+        .camera-result {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            padding: 0.5rem;
+            text-align: center;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            font-weight: bold;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .camera-result.show {
+            opacity: 1;
+        }
+        .camera-result.flooded {
+            background-color: rgba(220, 53, 69, 0.8);
+        }
+        .camera-result.nonflooded {
+            background-color: rgba(25, 135, 84, 0.8);
+        }
+    </style>
+</head>
+<body>
+    <div class="container main-container">
+        <div class="header">
+            <h1>Flood Detection System</h1>
+            <p class="text-muted">Detect flooding in images or with your camera</p>
+        </div>
+
+        <ul class="nav nav-tabs" id="myTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="upload-tab" data-bs-toggle="tab" data-bs-target="#upload" type="button" role="tab" aria-controls="upload" aria-selected="true">Upload Image</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="camera-tab" data-bs-toggle="tab" data-bs-target="#camera" type="button" role="tab" aria-controls="camera" aria-selected="false">Use Camera</button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="myTabContent">
+            <!-- Upload Tab -->
+            <div class="tab-pane fade show active" id="upload" role="tabpanel" aria-labelledby="upload-tab">
+                <div class="upload-container" id="upload-container">
+                    <p>Drag and drop an image here or</p>
+                    <input type="file" id="file-input" class="form-control" accept="image/*" style="display: none;">
+                    <button class="btn btn-primary" id="browse-button">Browse Files</button>
+                </div>
+
+                <div class="preview-container" id="preview-container" style="display: none;">
+                    <img id="preview-image" class="preview-image" src="/placeholder.svg" alt="Preview">
+                </div>
+
+                <div class="d-grid gap-2">
+                    <button class="btn btn-success" id="predict-button" disabled>Detect Flooding</button>
+                </div>
+
+                <div class="loading" id="loading">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p>Analyzing image...</p>
+                </div>
+
+                <div class="result-container" id="result-container" style="display: none;">
+                    <h3 id="result-title"></h3>
+                    <p id="result-confidence"></p>
+                    <div class="progress confidence-bar">
+                        <div id="confidence-bar" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Camera Tab -->
+            <div class="tab-pane fade" id="camera" role="tabpanel" aria-labelledby="camera-tab">
+                <div class="camera-container" id="camera-container">
+                    <video id="camera-stream" autoplay playsinline></video>
+                    <div class="camera-result" id="camera-result">No flooding detected</div>
+                </div>
+
+                <div class="camera-controls">
+                    <button class="btn btn-primary" id="start-camera">Start Camera</button>
+                    <button class="btn btn-secondary" id="stop-camera" disabled>Stop Camera</button>
+                </div>
+
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="toggle-realtime" checked>
+                    <label class="form-check-label" for="toggle-realtime">Real-time detection</label>
+                </div>
+
+                <div class="camera-settings mt-3">
+                    <label for="detection-interval" class="form-label">Detection interval: <span id="interval-value">1</span> second(s)</label>
+                    <input type="range" class="form-range" id="detection-interval" min="0.5" max="5" step="0.5" value="1">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Upload tab elements
+            const uploadContainer = document.getElementById('upload-container');
+            const fileInput = document.getElementById('file-input');
+            const browseButton = document.getElementById('browse-button');
+            const previewContainer = document.getElementById('preview-container');
+            const previewImage = document.getElementById('preview-image');
+            const predictButton = document.getElementById('predict-button');
+            const loading = document.getElementById('loading');
+            const resultContainer = document.getElementById('result-container');
+            const resultTitle = document.getElementById('result-title');
+            const resultConfidence = document.getElementById('result-confidence');
+            const confidenceBar = document.getElementById('confidence-bar');
+
+            // Camera tab elements
+            const cameraStream = document.getElementById('camera-stream');
+            const startCameraBtn = document.getElementById('start-camera');
+            const stopCameraBtn = document.getElementById('stop-camera');
+            const cameraResult = document.getElementById('camera-result');
+            const toggleRealtime = document.getElementById('toggle-realtime');
+            const detectionInterval = document.getElementById('detection-interval');
+            const intervalValue = document.getElementById('interval-value');
+
+            // Tab switching
+            const cameraTab = document.getElementById('camera-tab');
+            cameraTab.addEventListener('click', function() {
+                if (stream) {
+                    cameraStream.play();
+                }
+            });
+
+            // File Upload Logic
+            browseButton.addEventListener('click', function() {
+                fileInput.click();
+            });
+
+            fileInput.addEventListener('change', handleFileSelect);
+
+            uploadContainer.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                uploadContainer.classList.add('dragover');
+            });
+
+            uploadContainer.addEventListener('dragleave', function() {
+                uploadContainer.classList.remove('dragover');
+            });
+
+            uploadContainer.addEventListener('drop', function(e) {
+                e.preventDefault();
+                uploadContainer.classList.remove('dragover');
+
+                if (e.dataTransfer.files.length) {
+                    fileInput.files = e.dataTransfer.files;
+                    handleFileSelect(e);
+                }
+            });
+
+            // Handle file select
+            function handleFileSelect(e) {
+                const file = fileInput.files[0];
+
+                if (file) {
+                    // Check if file is an image
+                    if (!file.type.match('image.*')) {
+                        alert('Please select an image file');
+                        return;
+                    }
+
+                    // Show preview
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        previewImage.src = e.target.result;
+                        previewContainer.style.display = 'flex';
+                        predictButton.disabled = false;
+                    };
+                    reader.readAsDataURL(file);
+
+                    // Hide result
+                    resultContainer.style.display = 'none';
+                }
+            }
+
+            // Predict button click
+            predictButton.addEventListener('click', function() {
+                if (fileInput.files.length === 0) return;
+
+                const file = fileInput.files[0];
+                const formData = new FormData();
+                formData.append('file', file);
+
+                // Show loading
+                loading.style.display = 'block';
+                resultContainer.style.display = 'none';
+                predictButton.disabled = true;
+
+                // Send request
+                fetch('/predict', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // Hide loading
+                    loading.style.display = 'none';
+
+                    // Show result
+                    resultContainer.style.display = 'block';
+
+                    if (data.is_flooded) {
+                        resultContainer.className = 'result-container result-flooded';
+                        resultTitle.textContent = 'Flooded Area Detected';
+                        confidenceBar.className = 'progress-bar bg-danger';
+                    } else {
+                        resultContainer.className = 'result-container result-nonflooded';
+                        resultTitle.textContent = 'No Flooding Detected';
+                        confidenceBar.className = 'progress-bar bg-success';
+                    }
+
+                    const confidencePercent = Math.round(data.confidence * 100);
+                    resultConfidence.textContent = `Confidence: ${confidencePercent}%`;
+                    confidenceBar.style.width = `${confidencePercent}%`;
+
+                    predictButton.disabled = false;
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    loading.style.display = 'none';
+                    alert('Error processing the image. Please try again.');
+                    predictButton.disabled = false;
+                });
+            });
+
+            // Camera Logic
+            let stream = null;
+            let detectionTimer = null;
+            let canvas = document.createElement('canvas');
+            let ctx = canvas.getContext('2d');
+            let isDetecting = false;
+
+            startCameraBtn.addEventListener('click', startCamera);
+            stopCameraBtn.addEventListener('click', stopCamera);
+
+            detectionInterval.addEventListener('input', function() {
+                intervalValue.textContent = this.value;
+                if (detectionTimer) {
+                    clearInterval(detectionTimer);
+                    if (toggleRealtime.checked) {
+                        startDetection();
+                    }
+                }
+            });
+
+            toggleRealtime.addEventListener('change', function() {
+                if (this.checked) {
+                    startDetection();
+                } else {
+                    clearInterval(detectionTimer);
+                }
+            });
+
+            function startCamera() {
+                if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                    navigator.mediaDevices.getUserMedia({ video: true })
+                        .then(function(mediaStream) {
+                            stream = mediaStream;
+                            cameraStream.srcObject = stream;
+                            cameraStream.play();
+
+                            startCameraBtn.disabled = true;
+                            stopCameraBtn.disabled = false;
+
+                            if (toggleRealtime.checked) {
+                                startDetection();
+                            }
+                        })
+                        .catch(function(err) {
+                            console.error("Error accessing camera: ", err);
+                            alert("Error accessing camera. Please ensure you have granted camera permissions.");
+                        });
+                } else {
+                    alert("Your browser doesn't support camera access.");
+                }
+            }
+
+            function stopCamera() {
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                    cameraStream.srcObject = null;
+                    stream = null;
+
+                    startCameraBtn.disabled = false;
+                    stopCameraBtn.disabled = true;
+
+                    clearInterval(detectionTimer);
+                    cameraResult.classList.remove('show');
+                }
+            }
+
+            function startDetection() {
+                const interval = parseFloat(detectionInterval.value) * 1000;
+                detectionTimer = setInterval(detectFlood, interval);
+            }
+
+            function detectFlood() {
+                if (!stream || isDetecting) return;
+
+                isDetecting = true;
+
+                // Set canvas dimensions to match video
+                canvas.width = cameraStream.videoWidth;
+                canvas.height = cameraStream.videoHeight;
+
+                // Draw current video frame to canvas
+                ctx.drawImage(cameraStream, 0, 0, canvas.width, canvas.height);
+
+                // Convert canvas to blob
+                canvas.toBlob(function(blob) {
+                    const formData = new FormData();
+                    formData.append('file', blob, 'camera-capture.jpg');
+
+                    // Send to server
+                    fetch('/predict', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        updateCameraResult(data);
+                        isDetecting = false;
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        isDetecting = false;
+                    });
+                }, 'image/jpeg', 0.9);
+            }
+
+            function updateCameraResult(data) {
+                cameraResult.classList.remove('flooded', 'nonflooded');
+
+                if (data.is_flooded) {
+                    cameraResult.textContent = `Flooding Detected (${Math.round(data.confidence * 100)}%)`;
+                    cameraResult.classList.add('flooded');
+                } else {
+                    cameraResult.textContent = `No Flooding Detected (${Math.round(data.confidence * 100)}%)`;
+                    cameraResult.classList.add('nonflooded');
+                }
+
+                cameraResult.classList.add('show');
+            }
+        });
+    </script>
+</body>
+</html>
